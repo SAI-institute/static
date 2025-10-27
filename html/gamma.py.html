@@ -1,0 +1,78 @@
+<div id="gamma-app" style="text-align:center; font-family:sans-serif; margin:2em;">
+  <div id="controls">
+    <label>α: <span id="alpha_val">2.00</span></label><br>
+    <input id="alpha" type="range" min="0.2" max="10" value="2" step="0.01"><br><br>
+    <label>β: <span id="beta_val">2.00</span></label><br>
+    <input id="beta" type="range" min="0.1" max="5" value="2" step="0.01">
+  </div>
+
+  <div id="plot" style="margin-top:1em;"></div>
+
+  <!-- Pyodideロードとスクリプト -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
+  <script type="text/javascript">
+    async function main() {
+      const pyodide = await loadPyodide();
+      await pyodide.loadPackage(["matplotlib", "numpy", "scipy"]);
+
+      const code = `
+import matplotlib
+matplotlib.use("AGG")
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.special import gamma
+import io, base64
+
+def gamma_pdf(x, alpha, beta):
+    return (x**(alpha-1) * np.exp(-x/beta)) / (gamma(alpha)*beta**alpha)
+
+def plot_gamma(alpha, beta):
+    x = np.linspace(0, 10, 400)
+    y = gamma_pdf(x, alpha, beta)
+    y_ref = gamma_pdf(x, 1, beta)  # α=1 reference
+
+    fig, ax = plt.subplots(figsize=(5.5,3.3))
+    ax.plot(x, y_ref, color="gray", alpha=0.3, lw=2, label="α=1 reference")
+    ax.plot(x, y, color="royalblue", lw=2, label=f"α={alpha:.2f}, β={beta:.2f}")
+
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 1.0)
+    ax.set_xlabel("x")
+    ax.set_ylabel("Density")
+    ax.set_title("Gamma Distribution")
+    ax.legend(loc="upper right", frameon=False)
+
+    if alpha >= 1:
+        mode = (alpha - 1) * beta
+        y_mode = gamma_pdf(mode, alpha, beta)
+        ax.plot(mode, y_mode, "ro", markersize=6)
+    else:
+        ax.text(0.5, 0.9, "Diverges at x=0", transform=ax.transAxes, color="crimson", fontsize=10, weight="bold")
+
+    ax.grid(True, alpha=0.3)
+    buf = io.BytesIO()
+    fig.tight_layout()
+    fig.savefig(buf, format="png")
+    plt.close(fig)
+    data = base64.b64encode(buf.getvalue()).decode("ascii")
+    return f"<img src='data:image/png;base64,{data}'/>"
+`;
+      await pyodide.runPythonAsync(code);
+
+      async function updatePlot() {
+        const alpha = parseFloat(document.getElementById("alpha").value);
+        const beta = parseFloat(document.getElementById("beta").value);
+        document.getElementById("alpha_val").textContent = alpha.toFixed(2);
+        document.getElementById("beta_val").textContent = beta.toFixed(2);
+        const img_html = await pyodide.runPythonAsync(`plot_gamma(${alpha}, ${beta})`);
+        document.getElementById("plot").innerHTML = img_html;
+      }
+
+      document.getElementById("alpha").oninput = updatePlot;
+      document.getElementById("beta").oninput = updatePlot;
+      await updatePlot();
+    }
+
+    main();
+  </script>
+</div>
