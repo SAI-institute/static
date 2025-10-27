@@ -1,78 +1,116 @@
 <div id="gamma-app" style="text-align:center; font-family:sans-serif; margin:2em;">
-  <div id="controls">
+  <h2>Gamma Distribution f_{αβ}(x)</h2>
+  <div id="controls" style="margin-bottom:1em;">
     <label>α: <span id="alpha_val">2.00</span></label><br>
-    <input id="alpha" type="range" min="0.2" max="10" value="2" step="0.01"><br><br>
-    <label>β: <span id="beta_val">2.00</span></label><br>
-    <input id="beta" type="range" min="0.1" max="5" value="2" step="0.01">
+    <input id="alpha" type="range" min="0.2" max="10" value="2" step="0.01" style="width:80%;"><br><br>
+    <label>β: <span id="beta_val">1.00</span></label><br>
+    <input id="beta" type="range" min="0.1" max="5" value="1" step="0.01" style="width:80%;">
   </div>
 
-  <div id="plot" style="margin-top:1em;"></div>
+  <div id="plot" style="width:100%;max-width:600px;margin:auto;"></div>
+</div>
 
-  <!-- Pyodideロードとスクリプト -->
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
-  <script type="text/javascript">
-    async function main() {
-      const pyodide = await loadPyodide();
-      await pyodide.loadPackage(["matplotlib", "numpy", "scipy"]);
+<script src="https://cdn.plot.ly/plotly-2.25.2.min.js"></script>
+<script>
+// Lanczos 近似ガンマ関数
+function gammaFunc(z) {
+    const g = 7;
+    const p = [
+        0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,
+        -176.61502916214059,12.507343278686905,-0.13857109526572012,
+        9.9843695780195716e-6,1.5056327351493116e-7
+    ];
+    if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gammaFunc(1 - z));
+    z -= 1;
+    let x = p[0];
+    for (let i = 1; i < g + 2; i++) x += p[i] / (z + i);
+    const t = z + g + 0.5;
+    return Math.sqrt(2*Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+}
 
-      const code = `
-import matplotlib
-matplotlib.use("AGG")
-import matplotlib.pyplot as plt
-import numpy as np
-from scipy.special import gamma
-import io, base64
+// Gamma PDF
+function gammaPDF(x, alpha, beta) {
+    if(x <= 0) return 0;
+    const coeff = 1 / (gammaFunc(alpha) * Math.pow(beta, alpha));
+    return coeff * Math.pow(x, alpha-1) * Math.exp(-x/beta);
+}
 
-def gamma_pdf(x, alpha, beta):
-    return (x**(alpha-1) * np.exp(-x/beta)) / (gamma(alpha)*beta**alpha)
+function plotGamma(alpha, beta) {
+    const delta = 0.005;
+    const xStart = alpha < 1 ? 0.05 : 0;
+    const x = Array.from({length: Math.floor((2-xStart)/delta)+1}, (_,i)=> xStart + i*delta);
+    const y = x.map(v => gammaPDF(v, alpha, beta));
+    const y_ref = x.map(v => (v>=0) ? Math.exp(-v/beta)/beta : 0);
 
-def plot_gamma(alpha, beta):
-    x = np.linspace(0, 10, 400)
-    y = gamma_pdf(x, alpha, beta)
-    y_ref = gamma_pdf(x, 1, beta)  # α=1 reference
+    // α=1リファレンス
+    const traceRef = {
+        x: x,
+        y: y_ref.map(v=>Math.min(v,2)),
+        mode: 'lines',
+        line:{color:'gray', width:2, dash:'dot'},
+        opacity:0.3,
+        name: 'α=1 reference'
+    };
 
-    fig, ax = plt.subplots(figsize=(5.5,3.3))
-    ax.plot(x, y_ref, color="gray", alpha=0.3, lw=2, label="α=1 reference")
-    ax.plot(x, y, color="royalblue", lw=2, label=f"α={alpha:.2f}, β={beta:.2f}")
+    // メイン曲線
+    const traceMain = {
+        x: x,
+        y: y.map(v=>Math.min(v,2)),
+        mode: 'lines',
+        line:{color:'royalblue', width:2},
+        name: 'Gamma PDF'
+    };
 
-    ax.set_xlim(0, 10)
-    ax.set_ylim(0, 1.0)
-    ax.set_xlabel("x")
-    ax.set_ylabel("Density")
-    ax.set_title("Gamma Distribution")
-    ax.legend(loc="upper right", frameon=False)
+    const data = [traceRef, traceMain];
+    const annotations = [];
 
-    if alpha >= 1:
-        mode = (alpha - 1) * beta
-        y_mode = gamma_pdf(mode, alpha, beta)
-        ax.plot(mode, y_mode, "ro", markersize=6)
-    else:
-        ax.text(0.5, 0.9, "Diverges at x=0", transform=ax.transAxes, color="crimson", fontsize=10, weight="bold")
-
-    ax.grid(True, alpha=0.3)
-    buf = io.BytesIO()
-    fig.tight_layout()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    data = base64.b64encode(buf.getvalue()).decode("ascii")
-    return f"<img src='data:image/png;base64,{data}'/>"
-`;
-      await pyodide.runPythonAsync(code);
-
-      async function updatePlot() {
-        const alpha = parseFloat(document.getElementById("alpha").value);
-        const beta = parseFloat(document.getElementById("beta").value);
-        document.getElementById("alpha_val").textContent = alpha.toFixed(2);
-        document.getElementById("beta_val").textContent = beta.toFixed(2);
-        const img_html = await pyodide.runPythonAsync(`plot_gamma(${alpha}, ${beta})`);
-        document.getElementById("plot").innerHTML = img_html;
-      }
-
-      document.getElementById("alpha").oninput = updatePlot;
-      document.getElementById("beta").oninput = updatePlot;
-      await updatePlot();
+    if(alpha >= 1){
+        // α ≥ 1 の場合、極大点を赤丸表示
+        const modeX = (alpha-1)*beta;
+        const modeY = gammaPDF(modeX, alpha, beta);
+        data.push({
+            x:[modeX], y:[Math.min(modeY,2)],
+            mode:'markers', marker:{color:'red', size:8},
+            name:'Mode'
+        });
+    } else {
+        // α < 1 の場合、発散注釈のみ
+        annotations.push({
+            x: xStart, y: 1.8,
+            text:"Diverges at x→0",
+            showarrow:false,
+            font:{color:'crimson', size:12, family:'sans-serif'}
+        });
     }
 
-    main();
-  </script>
-</div>
+    const layout = {
+        xaxis:{range:[xStart,2], title:'x', showgrid:true, zeroline:true},
+        yaxis:{range:[0,2], title:'Density', showgrid:true, zeroline:true},
+        title:'Gamma Distribution',
+        margin:{t:40},
+        legend:{x:0.7, y:0.95},
+        annotations: annotations
+    };
+
+    Plotly.newPlot('plot', data, layout, {responsive:true});
+}
+
+// スライダー
+const alphaSlider = document.getElementById('alpha');
+const betaSlider = document.getElementById('beta');
+const alphaVal = document.getElementById('alpha_val');
+const betaVal = document.getElementById('beta_val');
+
+function updatePlot() {
+    const alpha = parseFloat(alphaSlider.value);
+    const beta = parseFloat(betaSlider.value);
+    alphaVal.textContent = alpha.toFixed(2);
+    betaVal.textContent = beta.toFixed(2);
+    plotGamma(alpha, beta);
+}
+
+alphaSlider.addEventListener('input', updatePlot);
+betaSlider.addEventListener('input', updatePlot);
+
+updatePlot();
+</script>
