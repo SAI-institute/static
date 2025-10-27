@@ -1,78 +1,90 @@
 <div id="gamma-app" style="text-align:center; font-family:sans-serif; margin:2em;">
-  <div id="controls">
+  <h2>Gamma Distribution f_{αβ}(x)</h2>
+  <div id="controls" style="margin-bottom:1em;">
     <label>α: <span id="alpha_val">2.00</span></label><br>
-    <input id="alpha" type="range" min="0.2" max="10" value="2" step="0.01"><br><br>
+    <input id="alpha" type="range" min="0.2" max="10" value="2" step="0.01" style="width:80%;"><br><br>
     <label>β: <span id="beta_val">2.00</span></label><br>
-    <input id="beta" type="range" min="0.1" max="5" value="2" step="0.01">
+    <input id="beta" type="range" min="0.1" max="5" value="2" step="0.01" style="width:80%;">
   </div>
 
-  <div id="plot" style="margin-top:1em;"></div>
+  <div id="plot" style="width:100%;max-width:600px;margin:auto;"></div>
+ </div>
 
-  <!-- Pyodideロードとスクリプト -->
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
-  <script type="text/javascript">
-    async function main() {
-      const pyodide = await loadPyodide();
-      await pyodide.loadPackage(["matplotlib", "numpy", "scipy"]);
+ <script src="https://cdn.plot.ly/plotly-2.25.2.min.js"></script>
+ <script>
+ // --- 純JS版 Plotly 描画 ---
+ function gammaFunc(z){
+   const g=7;
+   const p=[
+     0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,
+     -176.61502916214059,12.507343278686905,-0.13857109526572012,
+     9.9843695780195716e-6,1.5056327351493116e-7
+   ];
+   if(z<0.5) return Math.PI/(Math.sin(Math.PI*z)*gammaFunc(1-z));
+   z-=1;
+   let x=p[0];
+   for(let i=1;i<g+2;i++) x+=p[i]/(z+i);
+   const t=z+g+0.5;
+   return Math.sqrt(2*Math.PI)*Math.pow(t,z+0.5)*Math.exp(-t)*x;
+ }
 
-      const code = `
-import matplotlib
-matplotlib.use("AGG")
-import matplotlib.pyplot as plt
-import numpy as np
-from scipy.special import gamma
-import io, base64
+ function gammaPDF(x, alpha, beta){
+   if(x<=0) return 0;
+   return Math.pow(x,alpha-1)*Math.exp(-x/beta)/(Math.pow(beta,alpha)*gammaFunc(alpha));
+ }
 
-def gamma_pdf(x, alpha, beta):
-    return (x**(alpha-1) * np.exp(-x/beta)) / (gamma(alpha)*beta**alpha)
+ function plotGamma(){
+  const alpha=parseFloat(document.getElementById('alpha').value);
+  const beta =parseFloat(document.getElementById('beta').value);
+  const delta=0.005;
+  const xAxisStart=0;            // グリッド/y軸用の開始
+  const xPlotStart=0.00001;         // プロット用の開始（0未満を描かない）
+  const xAll=Array.from({length:Math.floor((2-xAxisStart)/delta)+1},(_,i)=>xAxisStart+i*delta);
+  const x=xAll.filter(v=>v>=xPlotStart);
+  const y=x.map(v=>Math.min(gammaPDF(v,alpha,beta),2));
+  const yRef=x.map(v=>Math.min(gammaPDF(v,1,beta),2));
 
-def plot_gamma(alpha, beta):
-    x = np.linspace(0, 10, 400)
-    y = gamma_pdf(x, alpha, beta)
-    y_ref = gamma_pdf(x, 1, beta)  # α=1 reference
+  const layout={
+    xaxis:{range:[xAxisStart,2],title:'x',showgrid:true,zeroline:true,showline:true,linecolor:'#333'},
+    yaxis:{range:[0,2],title:'Density',showgrid:true,zeroline:true,showline:true,linecolor:'#333'},
+    margin:{t:40},
+    legend:{x:0.7,y:0.95}
+  };
 
-    fig, ax = plt.subplots(figsize=(5.5,3.3))
-    ax.plot(x, y_ref, color="gray", alpha=0.3, lw=2, label="α=1 reference")
-    ax.plot(x, y, color="royalblue", lw=2, label=f"α={alpha:.2f}, β={beta:.2f}")
+  // 初回のみ newPlot。以降は restyle/relayout で更新。
+  if(!window._gammaInited){
+    const traceRef={x,y:yRef,mode:'lines',line:{color:'gray',dash:'dot',width:2},opacity:0.3,name:'α=1 reference'};
+    const traceMain={x,y,mode:'lines',line:{color:'royalblue',width:2},name:'Gamma PDF'};
+    const traceMode={x:[],y:[],mode:'markers',marker:{color:'red',size:8},name:'Mode',visible:false};
+    Plotly.newPlot('plot',[traceRef,traceMain,traceMode],layout,{responsive:true});
+    window._gammaInited=true;
+  } else {
+    Plotly.restyle('plot', {x:[x], y:[yRef]}, [0]);
+    Plotly.restyle('plot', {x:[x], y:[y]}, [1]);
+  }
 
-    ax.set_xlim(0, 10)
-    ax.set_ylim(0, 1.0)
-    ax.set_xlabel("x")
-    ax.set_ylabel("Density")
-    ax.set_title("Gamma Distribution")
-    ax.legend(loc="upper right", frameon=False)
-
-    if alpha >= 1:
-        mode = (alpha - 1) * beta
-        y_mode = gamma_pdf(mode, alpha, beta)
-        ax.plot(mode, y_mode, "ro", markersize=6)
-    else:
-        ax.text(0.5, 0.9, "Diverges at x=0", transform=ax.transAxes, color="crimson", fontsize=10, weight="bold")
-
-    ax.grid(True, alpha=0.3)
-    buf = io.BytesIO()
-    fig.tight_layout()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    data = base64.b64encode(buf.getvalue()).decode("ascii")
-    return f"<img src='data:image/png;base64,{data}'/>"
-`;
-      await pyodide.runPythonAsync(code);
-
-      async function updatePlot() {
-        const alpha = parseFloat(document.getElementById("alpha").value);
-        const beta = parseFloat(document.getElementById("beta").value);
-        document.getElementById("alpha_val").textContent = alpha.toFixed(2);
-        document.getElementById("beta_val").textContent = beta.toFixed(2);
-        const img_html = await pyodide.runPythonAsync(`plot_gamma(${alpha}, ${beta})`);
-        document.getElementById("plot").innerHTML = img_html;
-      }
-
-      document.getElementById("alpha").oninput = updatePlot;
-      document.getElementById("beta").oninput = updatePlot;
-      await updatePlot();
+  if(alpha>=1){
+    const modeX=(alpha-1)*beta;
+    const modeY=Math.min(gammaPDF(modeX,alpha,beta),2);
+    if(modeX>=xPlotStart){
+      Plotly.restyle('plot', {x:[[modeX]], y:[[modeY]], visible:true}, [2]);
+    } else {
+      Plotly.restyle('plot', {visible:false}, [2]);
     }
+  } else {
+    Plotly.restyle('plot', {visible:false}, [2]);
+  }
 
-    main();
-  </script>
-</div>
+  Plotly.relayout('plot', { 'xaxis.range':[xAxisStart,2] });
+ }
+
+ function updatePlot(){
+   document.getElementById('alpha_val').textContent=parseFloat(document.getElementById('alpha').value).toFixed(2);
+   document.getElementById('beta_val').textContent =parseFloat(document.getElementById('beta').value).toFixed(2);
+   plotGamma();
+ }
+
+ document.getElementById('alpha').addEventListener('input',updatePlot);
+ document.getElementById('beta').addEventListener('input',updatePlot);
+ updatePlot();
+ </script>
