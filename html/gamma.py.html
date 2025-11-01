@@ -35,7 +35,7 @@
  function plotGamma(){
   const alpha=parseFloat(document.getElementById('alpha').value);
   const beta =parseFloat(document.getElementById('beta').value);
-  const delta=0.001;
+  const delta=0.003;
   const xAxisStart=0;            // グリッド/y軸用の開始
   const xPlotStart=0.0000000001;         // プロット用の開始（0未満を描かない）
   const xAll=Array.from({length:Math.floor((2-xAxisStart)/delta)+1},(_,i)=>xAxisStart+i*delta);
@@ -43,11 +43,22 @@
   const y=x.map(v=>Math.min(gammaPDF(v,alpha,beta),2));
   const yRef=x.map(v=>Math.min(gammaPDF(v,1,beta),2));
 
+  // レスポンシブ: 幅に応じて高さ/凡例配置を調整
+  const plotEl=document.getElementById('plot');
+  const w=plotEl.clientWidth||600;
+  const isNarrow=w<500;
+  const height=isNarrow?Math.max(260,Math.round(w*0.7)):400;
+  const legendCfg=isNarrow
+    ? {orientation:'h', x:0.5, xanchor:'center', y:-0.2, yanchor:'top'}
+    : {orientation:'h', x:0.5, xanchor:'center', y:-0.15, yanchor:'top'};
+  const marginCfg=isNarrow?{t:30,r:20,b:60,l:45}:{t:40,r:20,b:50,l:60};
+
   const layout={
     xaxis:{range:[xAxisStart,2],title:'x',showgrid:true,zeroline:true,showline:true,linecolor:'#333'},
     yaxis:{range:[0,2],title:'Density',showgrid:true,zeroline:true,showline:true,linecolor:'#333'},
-    margin:{t:40},
-    legend:{x:0.7,y:0.95}
+    margin:marginCfg,
+    legend:legendCfg,
+    height:height
   };
 
   // 初回のみ newPlot。以降は restyle/relayout で更新。
@@ -74,7 +85,12 @@
     Plotly.restyle('plot', {visible:false}, [2]);
   }
 
-  Plotly.relayout('plot', { 'xaxis.range':[xAxisStart,2] });
+  Plotly.relayout('plot', {
+    'xaxis.range':[xAxisStart,2],
+    height:height,
+    legend:legendCfg,
+    margin:marginCfg
+  });
  }
 
  function updatePlot(){
@@ -85,5 +101,13 @@
 
  document.getElementById('alpha').addEventListener('input',updatePlot);
  document.getElementById('beta').addEventListener('input',updatePlot);
+ // 画面幅変更時にもレイアウト最適化（debounce）
+ let _gammaResizeTimer=null;
+ window.addEventListener('resize', ()=>{
+   clearTimeout(_gammaResizeTimer);
+   _gammaResizeTimer=setTimeout(()=>{
+     plotGamma();
+   },150);
+ });
  updatePlot();
  </script>
