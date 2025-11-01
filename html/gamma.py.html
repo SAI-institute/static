@@ -36,9 +36,9 @@
  function plotGamma(){
   const alpha=parseFloat(document.getElementById('alpha').value);
   const beta =parseFloat(document.getElementById('beta').value);
-  const delta=0.005;
+  const delta=0.0005;
   const xAxisStart=0;            // グリッド/y軸用の開始
-  const xPlotStart=0.00001;         // プロット用の開始（0未満を描かない）
+  const xPlotStart=0.0000000001;         // プロット用の開始（0未満を描かない）
   const xAll=Array.from({length:Math.floor((2-xAxisStart)/delta)+1},(_,i)=>xAxisStart+i*delta);
   const x=xAll.filter(v=>v>=xPlotStart);
   const y=x.map(v=>Math.min(gammaPDF(v,alpha,beta),2));
